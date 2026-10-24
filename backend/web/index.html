@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shake to Travel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="top-bar">
+            <div>
+                <h1 class="brand-title">Shake to Travel</h1>
+                <p class="brand-sub">Arduino Oplà &middot; Country Collection</p>
+            </div>
+            <div class="nav-actions">
+                <a href="https://api-opgaver.mercantec.tech/demo/countries" target="_blank" rel="noopener noreferrer" class="source-link">Mercantec API</a>
+                <button id="refreshBtn" class="refresh-btn">Refresh</button>
+            </div>
+        </header>
+
+        <main class="gallery-grid">
+            <section class="hero-column">
+                <div class="section-label">
+                    <span class="marker-dot"></span>
+                    <span id="heroLabel">Latest Recorded</span>
+                </div>
+
+                <div id="heroContent">
+                    <div class="state-message">Connecting to backend...</div>
+                </div>
+            </section>
+
+            <section class="list-column">
+                <div class="filter-group">
+                    <input type="text"
+                           id="searchInput"
+                           class="search-input"
+                           placeholder="Search recorded countries...">
+
+                    <div id="regionChips" class="region-chips">
+                        <button class="region-btn active" data-region="All">All</button>
+                    </div>
+                </div>
+
+                <div id="savedList" class="saved-list"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
