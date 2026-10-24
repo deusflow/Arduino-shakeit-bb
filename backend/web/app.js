@@ -28,23 +28,8 @@
     }
 
     function formatDate(isoStr, shortOnly = false) {
-        if (!isoStr) return '';
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return isoStr;
-
-        const pad = (n) => String(n).padStart(2, '0');
-        const hours = pad(d.getUTCHours());
-        const mins = pad(d.getUTCMinutes());
-        const secs = pad(d.getUTCSeconds());
-
-        if (shortOnly) {
-            return `${hours}:${mins}:${secs}`;
-        }
-
-        const year = d.getUTCFullYear();
-        const month = pad(d.getUTCMonth() + 1);
-        const day = pad(d.getUTCDate());
-        return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+        if (!isoStr || isoStr.length < 19) return isoStr || '';
+        return shortOnly ? isoStr.slice(11, 19) : isoStr.slice(0, 19).replace('T', ' ');
     }
 
     async function fetchCountries() {
@@ -80,12 +65,7 @@
     }
 
     function renderRegions() {
-        const distinct = ['All'];
-        countries.forEach(c => {
-            if (c.region && !distinct.includes(c.region)) {
-                distinct.push(c.region);
-            }
-        });
+        const distinct = ['All', ...new Set(countries.map(c => c.region).filter(Boolean))];
 
         const currentButtons = Array.from(regionChips.querySelectorAll('.region-btn')).map(b => b.dataset.region);
         const isSame = distinct.length === currentButtons.length && distinct.every((r, i) => r === currentButtons[i]);

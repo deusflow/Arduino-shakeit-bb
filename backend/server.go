@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,12 +18,12 @@ import (
 var webFS embed.FS
 
 type CountryInput struct {
-	ApiName    *string `json:"apiName"`
-	Choice     *string `json:"choice"`
-	Cca3       *string `json:"cca3"`
-	Capital    *string `json:"capital"`
-	Region     *string `json:"region"`
-	Population *int64  `json:"population"`
+	ApiName    string `json:"apiName"`
+	Choice     string `json:"choice"`
+	Cca3       string `json:"cca3"`
+	Capital    string `json:"capital"`
+	Region     string `json:"region"`
+	Population *int64 `json:"population"`
 }
 
 type ErrorResponse struct {
@@ -46,18 +47,15 @@ func newServer(cfg Config, db *sql.DB, logger *slog.Logger) http.Handler {
 }
 
 func validateCountryInput(input CountryInput, allowedRegions []string) error {
-	if input.ApiName == nil || strings.TrimSpace(*input.ApiName) == "" {
+	if strings.TrimSpace(input.ApiName) == "" {
 		return fmt.Errorf("field apiName is required and cannot be empty")
 	}
 
-	if input.Choice == nil || strings.TrimSpace(*input.Choice) == "" {
+	if strings.TrimSpace(input.Choice) == "" {
 		return fmt.Errorf("field choice is required and cannot be empty")
 	}
 
-	if input.Cca3 == nil {
-		return fmt.Errorf("field cca3 is required")
-	}
-	cca3 := *input.Cca3
+	cca3 := input.Cca3
 	if len(cca3) != 3 {
 		return fmt.Errorf("field cca3 must be exactly 3 uppercase letters")
 	}
@@ -67,21 +65,16 @@ func validateCountryInput(input CountryInput, allowedRegions []string) error {
 		}
 	}
 
-	if input.Capital == nil || strings.TrimSpace(*input.Capital) == "" {
+	if strings.TrimSpace(input.Capital) == "" {
 		return fmt.Errorf("field capital is required and cannot be empty")
 	}
 
-	if input.Region == nil || strings.TrimSpace(*input.Region) == "" {
+	if strings.TrimSpace(input.Region) == "" {
 		return fmt.Errorf("field region is required and cannot be empty")
 	}
-	matched := false
-	for _, ar := range allowedRegions {
-		if strings.EqualFold(strings.TrimSpace(*input.Region), ar) {
-			matched = true
-			break
-		}
-	}
-	if !matched {
+	if !slices.ContainsFunc(allowedRegions, func(ar string) bool {
+		return strings.EqualFold(strings.TrimSpace(input.Region), ar)
+	}) {
 		return fmt.Errorf("field region must be one of: %s", strings.Join(allowedRegions, ", "))
 	}
 
@@ -108,23 +101,10 @@ func handleCreateCountry(cfg Config, db *sql.DB, logger *slog.Logger) http.Handl
 			return
 		}
 
-		// Mercantec demo API occasionally returns double-encoded Latin-1 bytes
-		if input.ApiName != nil {
-			repaired := repairBrokenUTF8(*input.ApiName)
-			input.ApiName = &repaired
-		}
-		if input.Choice != nil {
-			repaired := repairBrokenUTF8(*input.Choice)
-			input.Choice = &repaired
-		}
-		if input.Capital != nil {
-			repaired := repairBrokenUTF8(*input.Capital)
-			input.Capital = &repaired
-		}
-		if input.Region != nil {
-			repaired := repairBrokenUTF8(*input.Region)
-			input.Region = &repaired
-		}
+		input.ApiName = repairBrokenUTF8(input.ApiName)
+		input.Choice = repairBrokenUTF8(input.Choice)
+		input.Capital = repairBrokenUTF8(input.Capital)
+		input.Region = repairBrokenUTF8(input.Region)
 
 		if err := validateCountryInput(input, cfg.AllowedRegions); err != nil {
 			writeJSONError(w, http.StatusBadRequest, err.Error())

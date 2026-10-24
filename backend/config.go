@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"os"
 	"strings"
 )
@@ -13,23 +14,11 @@ type Config struct {
 }
 
 func loadConfig() Config {
-	addr := os.Getenv("SERVER_ADDR")
-	if addr == "" {
-		addr = "0.0.0.0:8080"
-	}
-
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "countries.db"
-	}
-
-	regionsEnv := os.Getenv("ALLOWED_REGIONS")
 	var regions []string
-	if regionsEnv != "" {
-		for _, r := range strings.Split(regionsEnv, ",") {
-			r = strings.TrimSpace(r)
-			if r != "" {
-				regions = append(regions, r)
+	if env := os.Getenv("ALLOWED_REGIONS"); env != "" {
+		for _, r := range strings.Split(env, ",") {
+			if trimmed := strings.TrimSpace(r); trimmed != "" {
+				regions = append(regions, trimmed)
 			}
 		}
 	}
@@ -38,8 +27,8 @@ func loadConfig() Config {
 	}
 
 	return Config{
-		ListenAddr:     addr,
-		DbPath:         dbPath,
+		ListenAddr:     cmp.Or(os.Getenv("SERVER_ADDR"), "0.0.0.0:8080"),
+		DbPath:         cmp.Or(os.Getenv("DB_PATH"), "countries.db"),
 		AllowedRegions: regions,
 		MaxBodyBytes:   64 * 1024,
 	}

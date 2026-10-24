@@ -1,4 +1,3 @@
-
 #include <SPI.h>
 #include <WiFiNINA.h>
 #include <Arduino_MKRIoTCarrier.h>
@@ -13,9 +12,7 @@ MKRIoTCarrier carrier;
 enum AppState {
   STATE_CHOOSE_REGION,
   STATE_WAIT_SHAKE,
-  STATE_LOADING,
   STATE_COUNTRY_SHOWN,
-  STATE_SAVING,
   STATE_SAVED,
   STATE_ERROR
 };
@@ -40,38 +37,10 @@ struct Country {
 
 Country currentCountry;
 bool hasCurrentCountry = false;
-bool isSaving = false;
 
 unsigned long lastShakeTime = 0;
 unsigned long savedStateEnterTime = 0;
 bool randomSeeded = false;
-
-extern "C" char* sbrk(int incr);
-int getFreeRam() {
-  char top;
-  return &top - reinterpret_cast<char*>(sbrk(0));
-}
-
-// Stream wrapper that tracks bytes read by ArduinoJson
-class CountingStream : public Stream {
-private:
-  Client& client;
-  size_t bytesRead;
-public:
-  CountingStream(Client& c) : client(c), bytesRead(0) {}
-  size_t getBytesRead() const { return bytesRead; }
-  int available() override { return client.available(); }
-  int read() override {
-    int c = client.read();
-    if (c >= 0) {
-      bytesRead++;
-    }
-    return c;
-  }
-  int peek() override { return client.peek(); }
-  void flush() override { client.flush(); }
-  size_t write(uint8_t b) override { return client.write(b); }
-};
 
 void seedRandomOnce() {
   if (!randomSeeded) {
@@ -142,18 +111,21 @@ bool checkShake() {
   return false;
 }
 
-void drawChooseRegionScreen() {
+void drawHeader(const char* title, uint16_t color = ST77XX_WHITE, int y = 35) {
   carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextColor(color);
   carrier.display.setTextWrap(false);
-
   carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 35);
-  carrier.display.println("Choose Region");
+  carrier.display.setCursor(30, y);
+  carrier.display.println(title);
+  carrier.display.drawFastHLine(30, y + 23, 180, 0x4208);
+}
 
-  carrier.display.drawFastHLine(30, 58, 180, 0x4208);
+void drawChooseRegionScreen() {
+  drawHeader("Choose Region");
 
   carrier.display.setTextSize(1);
+  carrier.display.setTextColor(ST77XX_WHITE);
   carrier.display.setCursor(35, 75);
   carrier.display.println("TOUCH 1: Europe");
 
@@ -171,15 +143,7 @@ void drawChooseRegionScreen() {
 }
 
 void drawWaitShakeScreen(const char* regionName) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_WHITE);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 40);
-  carrier.display.println(regionName);
-
-  carrier.display.drawFastHLine(30, 65, 180, 0x4208);
+  drawHeader(regionName, ST77XX_WHITE, 40);
 
   carrier.display.setTextSize(2);
   carrier.display.setCursor(30, 95);
@@ -198,15 +162,7 @@ void drawWaitShakeScreen(const char* regionName) {
 }
 
 void drawLoadingScreen(const char* countryName) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_WHITE);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 45);
-  carrier.display.println("Traveling...");
-
-  carrier.display.drawFastHLine(30, 70, 180, 0x4208);
+  drawHeader("Traveling...", ST77XX_WHITE, 45);
 
   carrier.display.setTextSize(1);
   carrier.display.setCursor(30, 95);
@@ -224,17 +180,10 @@ void drawLoadingScreen(const char* countryName) {
 }
 
 void drawCountryScreen(const Country& c) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_WHITE);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 35);
-  carrier.display.println(c.name);
-
-  carrier.display.drawFastHLine(30, 58, 180, 0x4208);
+  drawHeader(c.name, ST77XX_WHITE, 35);
 
   carrier.display.setTextSize(1);
+  carrier.display.setTextColor(ST77XX_WHITE);
   carrier.display.setCursor(30, 72);
   carrier.display.print("Capital: ");
   carrier.display.println(c.capital);
@@ -263,17 +212,10 @@ void drawCountryScreen(const Country& c) {
 }
 
 void drawSavingScreen(const char* countryName) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_WHITE);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 60);
-  carrier.display.println("Saving...");
-
-  carrier.display.drawFastHLine(30, 90, 180, 0x4208);
+  drawHeader("Saving...", ST77XX_WHITE, 60);
 
   carrier.display.setTextSize(1);
+  carrier.display.setTextColor(ST77XX_WHITE);
   carrier.display.setCursor(30, 115);
   carrier.display.println(countryName);
 
@@ -283,15 +225,7 @@ void drawSavingScreen(const char* countryName) {
 }
 
 void drawSavedScreen(const char* countryName) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_GREEN);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 50);
-  carrier.display.println("Saved!");
-
-  carrier.display.drawFastHLine(30, 75, 180, 0x4208);
+  drawHeader("Saved!", ST77XX_GREEN, 50);
 
   carrier.display.setTextColor(ST77XX_WHITE);
   carrier.display.setTextSize(1);
@@ -311,15 +245,7 @@ void drawSavedScreen(const char* countryName) {
 }
 
 void drawErrorScreen(const char* shortMsg) {
-  carrier.display.fillScreen(ST77XX_BLACK);
-  carrier.display.setTextColor(ST77XX_RED);
-  carrier.display.setTextWrap(false);
-
-  carrier.display.setTextSize(2);
-  carrier.display.setCursor(30, 45);
-  carrier.display.println("ERROR");
-
-  carrier.display.drawFastHLine(30, 70, 180, 0x4208);
+  drawHeader("ERROR", ST77XX_RED, 45);
 
   carrier.display.setTextColor(ST77XX_WHITE);
   carrier.display.setTextSize(1);
@@ -383,9 +309,6 @@ bool connectWiFi() {
 
 bool fetchCountry(const char* countryName) {
   hasCurrentCountry = false;
-
-  unsigned long startTime = millis();
-  int ramBefore = getFreeRam();
 
   WiFiSSLClient sslClient;
   sslClient.setTimeout(HTTP_TIMEOUT_MS);
@@ -460,8 +383,6 @@ bool fetchCountry(const char* countryName) {
     return false;
   }
 
-  CountingStream stream(sslClient);
-
   StaticJsonDocument<256> filter;
   filter["name"]["common"] = true;
   filter["capital"][0] = true;
@@ -470,23 +391,8 @@ bool fetchCountry(const char* countryName) {
   filter["population"] = true;
 
   StaticJsonDocument<768> doc;
-  DeserializationError err = deserializeJson(doc, stream, DeserializationOption::Filter(filter));
+  DeserializationError err = deserializeJson(doc, sslClient, DeserializationOption::Filter(filter));
   sslClient.stop();
-
-  int ramAfter = getFreeRam();
-  unsigned long duration = millis() - startTime;
-  size_t bytesRead = stream.getBytesRead();
-
-  Serial.print("DEBUG: status=");
-  Serial.print(statusCode);
-  Serial.print(", bytes=");
-  Serial.print(bytesRead);
-  Serial.print(", ramBefore=");
-  Serial.print(ramBefore);
-  Serial.print(", ramAfter=");
-  Serial.print(ramAfter);
-  Serial.print(", timeMs=");
-  Serial.println(duration);
 
   if (err) {
     char errBuf[32];
@@ -524,18 +430,10 @@ bool fetchCountry(const char* countryName) {
     return false;
   }
 
-  strncpy(currentCountry.name, common, sizeof(currentCountry.name) - 1);
-  currentCountry.name[sizeof(currentCountry.name) - 1] = '\0';
-
-  strncpy(currentCountry.capital, cap, sizeof(currentCountry.capital) - 1);
-  currentCountry.capital[sizeof(currentCountry.capital) - 1] = '\0';
-
-  strncpy(currentCountry.cca3, c3, sizeof(currentCountry.cca3) - 1);
-  currentCountry.cca3[sizeof(currentCountry.cca3) - 1] = '\0';
-
-  strncpy(currentCountry.region, reg, sizeof(currentCountry.region) - 1);
-  currentCountry.region[sizeof(currentCountry.region) - 1] = '\0';
-
+  snprintf(currentCountry.name, sizeof(currentCountry.name), "%s", common);
+  snprintf(currentCountry.capital, sizeof(currentCountry.capital), "%s", cap);
+  snprintf(currentCountry.cca3, sizeof(currentCountry.cca3), "%s", c3);
+  snprintf(currentCountry.region, sizeof(currentCountry.region), "%s", reg);
   currentCountry.population = doc["population"].as<long>();
   hasCurrentCountry = true;
 
@@ -543,11 +441,9 @@ bool fetchCountry(const char* countryName) {
 }
 
 bool saveCountryToBackend(const Country& c) {
-  if (!hasCurrentCountry || isSaving) {
+  if (!hasCurrentCountry) {
     return false;
   }
-
-  isSaving = true;
 
   Serial.print("Connecting to backend: ");
   Serial.print(BACKEND_HOST);
@@ -558,7 +454,6 @@ bool saveCountryToBackend(const Country& c) {
   client.setTimeout(HTTP_TIMEOUT_MS);
 
   if (!client.connect(BACKEND_HOST, BACKEND_PORT)) {
-    isSaving = false;
     triggerError("Backend Fail", "Could not connect to PC backend");
     return false;
   }
@@ -591,7 +486,6 @@ bool saveCountryToBackend(const Country& c) {
   while (!client.available()) {
     if (millis() - waitStart > HTTP_TIMEOUT_MS) {
       client.stop();
-      isSaving = false;
       triggerError("Save Timeout", "Backend response timeout");
       return false;
     }
@@ -606,7 +500,6 @@ bool saveCountryToBackend(const Country& c) {
   }
 
   client.stop();
-  isSaving = false;
 
   Serial.print("Backend response status: ");
   Serial.println(statusCode);
@@ -618,6 +511,28 @@ bool saveCountryToBackend(const Country& c) {
     snprintf(errBuf, sizeof(errBuf), "Save HTTP %d", statusCode);
     triggerError(errBuf, "Backend rejected country payload");
     return false;
+  }
+}
+
+void resetToMenu() {
+  hasCurrentCountry = false;
+  selectedRegion = REGION_NONE;
+  currentState = STATE_CHOOSE_REGION;
+  drawChooseRegionScreen();
+}
+
+void rollCountry() {
+  const char* picked = pickRandomCountry(selectedRegion);
+  if (!picked) {
+    triggerError("No Countries", "Empty country list for region");
+    return;
+  }
+
+  drawLoadingScreen(picked);
+
+  if (fetchCountry(picked)) {
+    currentState = STATE_COUNTRY_SHOWN;
+    drawCountryScreen(currentCountry);
   }
 }
 
@@ -642,56 +557,30 @@ void handleChooseRegion() {
 
 void handleWaitShake() {
   if (carrier.Buttons.onTouchDown(TOUCH4)) {
-    selectedRegion = REGION_NONE;
-    hasCurrentCountry = false;
-    currentState = STATE_CHOOSE_REGION;
-    drawChooseRegionScreen();
+    resetToMenu();
     return;
   }
 
   if (checkShake()) {
-    const char* picked = pickRandomCountry(selectedRegion);
-    if (!picked) {
-      triggerError("No Countries", "Empty country list for region");
-      return;
-    }
-
-    currentState = STATE_LOADING;
-    drawLoadingScreen(picked);
-
-    if (fetchCountry(picked)) {
-      currentState = STATE_COUNTRY_SHOWN;
-      drawCountryScreen(currentCountry);
-    }
+    rollCountry();
   }
-}
-
-void handleLoading() {
 }
 
 void handleCountryShown() {
-  if (isSaving) {
-    return;
-  }
-
   if (carrier.Buttons.onTouchDown(TOUCH4)) {
-    hasCurrentCountry = false;
-    selectedRegion = REGION_NONE;
-    currentState = STATE_CHOOSE_REGION;
-    drawChooseRegionScreen();
+    resetToMenu();
     return;
   }
 
   if (carrier.Buttons.onTouchDown(TOUCH0)) {
     if (hasCurrentCountry) {
-      currentState = STATE_SAVING;
       drawSavingScreen(currentCountry.name);
 
       if (saveCountryToBackend(currentCountry)) {
         currentState = STATE_SAVED;
         savedStateEnterTime = millis();
         drawSavedScreen(currentCountry.name);
-      } else if (currentState == STATE_SAVING) {
+      } else {
         currentState = STATE_COUNTRY_SHOWN;
       }
     }
@@ -699,48 +588,18 @@ void handleCountryShown() {
   }
 
   if (checkShake()) {
-    const char* picked = pickRandomCountry(selectedRegion);
-    if (!picked) {
-      triggerError("No Countries", "Empty country list for region");
-      return;
-    }
-
-    currentState = STATE_LOADING;
-    drawLoadingScreen(picked);
-
-    if (fetchCountry(picked)) {
-      currentState = STATE_COUNTRY_SHOWN;
-      drawCountryScreen(currentCountry);
-    }
+    rollCountry();
   }
-}
-
-void handleSaving() {
 }
 
 void handleSaved() {
   if (carrier.Buttons.onTouchDown(TOUCH4)) {
-    hasCurrentCountry = false;
-    selectedRegion = REGION_NONE;
-    currentState = STATE_CHOOSE_REGION;
-    drawChooseRegionScreen();
+    resetToMenu();
     return;
   }
 
   if (checkShake()) {
-    const char* picked = pickRandomCountry(selectedRegion);
-    if (!picked) {
-      triggerError("No Countries", "Empty country list for region");
-      return;
-    }
-
-    currentState = STATE_LOADING;
-    drawLoadingScreen(picked);
-
-    if (fetchCountry(picked)) {
-      currentState = STATE_COUNTRY_SHOWN;
-      drawCountryScreen(currentCountry);
-    }
+    rollCountry();
     return;
   }
 
@@ -749,8 +608,7 @@ void handleSaved() {
       currentState = STATE_COUNTRY_SHOWN;
       drawCountryScreen(currentCountry);
     } else {
-      currentState = STATE_CHOOSE_REGION;
-      drawChooseRegionScreen();
+      resetToMenu();
     }
   }
 }
@@ -758,10 +616,7 @@ void handleSaved() {
 void handleError() {
   if (carrier.Buttons.onTouchDown(TOUCH4) || carrier.Buttons.onTouchDown(TOUCH1) ||
       carrier.Buttons.onTouchDown(TOUCH2) || carrier.Buttons.onTouchDown(TOUCH3)) {
-    hasCurrentCountry = false;
-    selectedRegion = REGION_NONE;
-    currentState = STATE_CHOOSE_REGION;
-    drawChooseRegionScreen();
+    resetToMenu();
   }
 }
 
@@ -798,14 +653,8 @@ void loop() {
     case STATE_WAIT_SHAKE:
       handleWaitShake();
       break;
-    case STATE_LOADING:
-      handleLoading();
-      break;
     case STATE_COUNTRY_SHOWN:
       handleCountryShown();
-      break;
-    case STATE_SAVING:
-      handleSaving();
       break;
     case STATE_SAVED:
       handleSaved();
@@ -814,4 +663,6 @@ void loop() {
       handleError();
       break;
   }
+
+  delay(20);
 }

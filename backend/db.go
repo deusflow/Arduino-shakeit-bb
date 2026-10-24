@@ -58,7 +58,7 @@ func insertCountry(db *sql.DB, c CountryInput, savedAt string) (SavedCountry, er
 	INSERT INTO countries (api_name, choice, cca3, capital, region, population, saved_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	res, err := db.Exec(query, *c.ApiName, *c.Choice, *c.Cca3, *c.Capital, *c.Region, *c.Population, savedAt)
+	res, err := db.Exec(query, c.ApiName, c.Choice, c.Cca3, c.Capital, c.Region, *c.Population, savedAt)
 	if err != nil {
 		return SavedCountry{}, fmt.Errorf("insert country: %w", err)
 	}
@@ -70,11 +70,11 @@ func insertCountry(db *sql.DB, c CountryInput, savedAt string) (SavedCountry, er
 
 	return SavedCountry{
 		ID:         id,
-		ApiName:    *c.ApiName,
-		Choice:     *c.Choice,
-		Cca3:       *c.Cca3,
-		Capital:    *c.Capital,
-		Region:     *c.Region,
+		ApiName:    c.ApiName,
+		Choice:     c.Choice,
+		Cca3:       c.Cca3,
+		Capital:    c.Capital,
+		Region:     c.Region,
 		Population: *c.Population,
 		SavedAt:    savedAt,
 	}, nil
