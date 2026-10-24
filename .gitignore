@@ -1,0 +1,18 @@
+# secrets
+arduino/arduino_secrets.h
+backend/.env
+
+# databases
+*.db
+*.db-journal
+
+# documents
+*.pdf
+
+# binaries
+bin/
+*.exe
+
+# os files
+.DS_Store
+Thumbs.db
