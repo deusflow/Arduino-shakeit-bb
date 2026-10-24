@@ -41,7 +41,7 @@ An interactive IoT country picker connecting an Arduino Oplà board, a Go backen
 
 ## Requirements
 
-* **Go 1.22+**
+* **Go 1.26+**
 * **Arduino IDE 2.x** with `WiFiNINA` and `Arduino_MKRIoTCarrier` libraries
 * **Arduino Oplà IoT Kit** (MKR WiFi 1010 + MKR IoT Carrier)
 
