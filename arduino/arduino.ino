@@ -267,13 +267,20 @@ bool connectWiFi() {
   Serial.println(SECRET_SSID);
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 15) {
-    WiFi.begin(SECRET_SSID, SECRET_PASS);
-    delay(1000);
+  while (WiFi.status() != WL_CONNECTED && attempts < 5) {
     attempts++;
-    Serial.print(".");
+    Serial.print("Connecting to WiFi (attempt ");
+    Serial.print(attempts);
+    Serial.println("/5)...");
+    WiFi.begin(SECRET_SSID, SECRET_PASS);
+
+    unsigned long startWait = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startWait < 5000) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
   }
-  Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
     triggerError("WiFi Failed", "Could not connect to WiFi");
