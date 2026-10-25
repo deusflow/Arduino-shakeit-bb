@@ -28,12 +28,14 @@ An interactive IoT country picker connecting an Arduino Oplà board, a Go backen
 │   ├── config.go              # Environment variable loader
 │   ├── textfix.go             # UTF-8 encoding repair function
 │   ├── server_test.go         # Backend unit tests
-│   └── web/                   # Embedded dashboard UI
-│       ├── index.html         # Semantic dashboard markup
-│       ├── style.css          # Dark-themed responsive layout
-│       └── app.js             # Live polling and search filters
-├── tools/gencountries/
-│   └── main.go                # Helper tool to generate countries.h
+│   ├── web/                   # Embedded dashboard UI
+│   │   ├── index.html         # Semantic dashboard markup
+│   │   ├── style.css          # Dark-themed responsive layout
+│   │   └── app.js             # Live polling and search filters
+│   └── cmd/gencountries/
+│       └── main.go            # Helper tool to generate countries.h
+├── go.mod                     # Single Go module definition
+├── go.sum                     # Checksums for direct dependencies
 └── Makefile                   # Build and test shortcuts
 ```
 
@@ -106,10 +108,7 @@ Response: `201 Created`
 ```bash
 curl http://localhost:8080/api/countries
 ```
-Returns countries ordered newest first. Supports optional filters:
-* `?region=Europe` — filter by continent
-* `?name=land` — search by name substring
-* `?limit=10` — limit results count
+Returns saved countries ordered newest first (JSON array).
 
 ---
 
@@ -119,7 +118,7 @@ Run backend automated tests:
 ```bash
 make test
 ```
-*(or `go test ./backend/... -v`)*
+*(or `go test ./... -v`)*
 
 ---
 

@@ -19,6 +19,5 @@ const unsigned long SAVED_SCREEN_DURATION_MS = 2000;
 // IMU shake sensitivity
 const float SHAKE_THRESHOLD = 1.35f;
 const unsigned long SHAKE_COOLDOWN_MS = 1500;
-const bool DEBUG_PRINT_ACCEL = false;
 
 #endif

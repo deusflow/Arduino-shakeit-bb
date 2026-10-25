@@ -13,15 +13,14 @@ enum AppState {
   STATE_CHOOSE_REGION,
   STATE_WAIT_SHAKE,
   STATE_COUNTRY_SHOWN,
-  STATE_SAVED,
   STATE_ERROR
 };
 
 enum RegionChoice {
   REGION_NONE = 0,
-  REGION_EUROPE,
-  REGION_ASIA,
-  REGION_AFRICA
+  REGION_EUROPE = 1,
+  REGION_ASIA = 2,
+  REGION_AFRICA = 3
 };
 
 AppState currentState = STATE_CHOOSE_REGION;
@@ -36,38 +35,15 @@ struct Country {
 };
 
 Country currentCountry;
-bool hasCurrentCountry = false;
-
 unsigned long lastShakeTime = 0;
-unsigned long savedStateEnterTime = 0;
-bool randomSeeded = false;
-
-void seedRandomOnce() {
-  if (!randomSeeded) {
-    randomSeed(micros() + millis());
-    randomSeeded = true;
-    Serial.println("Random generator seeded.");
-  }
-}
 
 const char* pickRandomCountry(RegionChoice region) {
-  int idx = 0;
-  switch (region) {
-    case REGION_EUROPE:
-      if (europeCount == 0) return nullptr;
-      idx = random(0, europeCount);
-      return europeCountries[idx];
-    case REGION_ASIA:
-      if (asiaCount == 0) return nullptr;
-      idx = random(0, asiaCount);
-      return asiaCountries[idx];
-    case REGION_AFRICA:
-      if (africaCount == 0) return nullptr;
-      idx = random(0, africaCount);
-      return africaCountries[idx];
-    default:
-      return nullptr;
-  }
+  if (region < REGION_EUROPE || region > REGION_AFRICA) return nullptr;
+  const char* const* lists[] = { europeCountries, asiaCountries, africaCountries };
+  const int counts[] = { europeCount, asiaCount, africaCount };
+  int idx = (int)region - 1;
+  if (counts[idx] == 0) return nullptr;
+  return lists[idx][random(0, counts[idx])];
 }
 
 const char* getRegionName(RegionChoice region) {
@@ -88,15 +64,6 @@ bool checkShake() {
   carrier.IMUmodule.readAcceleration(x, y, z);
   float magnitude = sqrt(x * x + y * y + z * z);
   float diff = fabs(magnitude - 1.0f);
-
-  if (DEBUG_PRINT_ACCEL) {
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 250) {
-      Serial.print("IMU: diff=");
-      Serial.println(diff, 2);
-      lastPrint = millis();
-    }
-  }
 
   if (diff > SHAKE_THRESHOLD) {
     unsigned long now = millis();
@@ -235,13 +202,6 @@ void drawSavedScreen(const char* countryName) {
   carrier.display.setCursor(30, 130);
   carrier.display.setTextColor(0x7BEF);
   carrier.display.println("Confirmed by PC (201)");
-
-  carrier.display.setCursor(30, 170);
-  carrier.display.setTextColor(ST77XX_WHITE);
-  carrier.display.println("Shake: Reroll");
-  carrier.display.setCursor(30, 190);
-  carrier.display.setTextColor(0x7BEF);
-  carrier.display.println("4: Back to menu");
 }
 
 void drawErrorScreen(const char* shortMsg) {
@@ -262,8 +222,6 @@ void drawErrorScreen(const char* shortMsg) {
 }
 
 void triggerError(const char* shortMsg, const char* detailMsg) {
-  hasCurrentCountry = false;
-
   Serial.print("ERROR: ");
   Serial.print(shortMsg);
   Serial.print(" - ");
@@ -271,6 +229,26 @@ void triggerError(const char* shortMsg, const char* detailMsg) {
 
   currentState = STATE_ERROR;
   drawErrorScreen(shortMsg);
+}
+
+int readStatusCode(Client& client) {
+  unsigned long waitStart = millis();
+  while (!client.available()) {
+    if (millis() - waitStart > HTTP_TIMEOUT_MS) {
+      client.stop();
+      triggerError("Timeout", "Server response timeout");
+      return -1;
+    }
+    delay(10);
+  }
+
+  String statusLine = client.readStringUntil('\n');
+  int statusCode = 0;
+  int firstSpace = statusLine.indexOf(' ');
+  if (firstSpace > 0) {
+    statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+  }
+  return statusCode;
 }
 
 bool connectWiFi() {
@@ -308,8 +286,6 @@ bool connectWiFi() {
 }
 
 bool fetchCountry(const char* countryName) {
-  hasCurrentCountry = false;
-
   WiFiSSLClient sslClient;
   sslClient.setTimeout(HTTP_TIMEOUT_MS);
 
@@ -342,28 +318,14 @@ bool fetchCountry(const char* countryName) {
   sslClient.print("User-Agent: ArduinoOpla\r\n");
   sslClient.print("Connection: close\r\n\r\n");
 
-  unsigned long waitStart = millis();
-  while (!sslClient.available()) {
-    if (millis() - waitStart > HTTP_TIMEOUT_MS) {
-      sslClient.stop();
-      triggerError("Timeout", "Server response timeout");
-      return false;
-    }
-    delay(10);
-  }
-
-  String statusLine = sslClient.readStringUntil('\n');
-  int statusCode = 0;
-  int firstSpace = statusLine.indexOf(' ');
-  if (firstSpace > 0) {
-    statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
-  }
+  int statusCode = readStatusCode(sslClient);
+  if (statusCode < 0) return false;
 
   if (statusCode != 200) {
     sslClient.stop();
     char codeBuf[32];
     snprintf(codeBuf, sizeof(codeBuf), "HTTP %d", statusCode);
-    triggerError(codeBuf, statusLine.c_str());
+    triggerError(codeBuf, "Unexpected response status");
     return false;
   }
 
@@ -383,14 +345,14 @@ bool fetchCountry(const char* countryName) {
     return false;
   }
 
-  StaticJsonDocument<256> filter;
+  JsonDocument filter;
   filter["name"]["common"] = true;
   filter["capital"][0] = true;
   filter["cca3"] = true;
   filter["region"] = true;
   filter["population"] = true;
 
-  StaticJsonDocument<768> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, sslClient, DeserializationOption::Filter(filter));
   sslClient.stop();
 
@@ -402,31 +364,16 @@ bool fetchCountry(const char* countryName) {
   }
 
   const char* common = doc["name"]["common"];
-  if (!common || strlen(common) == 0) {
-    triggerError("Missing name", "name.common missing or empty");
-    return false;
-  }
-
   const char* cap = doc["capital"][0];
-  if (!cap || strlen(cap) == 0) {
-    triggerError("Missing cap", "capital[0] missing or empty");
-    return false;
-  }
-
   const char* c3 = doc["cca3"];
-  if (!c3 || strlen(c3) != 3) {
-    triggerError("Missing cca3", "cca3 missing or not 3 chars");
-    return false;
-  }
-
   const char* reg = doc["region"];
-  if (!reg || strlen(reg) == 0) {
-    triggerError("Missing reg", "region missing or empty");
-    return false;
-  }
 
-  if (!doc.containsKey("population") || doc["population"].as<long>() < 0) {
-    triggerError("Missing pop", "population missing or negative");
+  if (!common || strlen(common) == 0 ||
+      !cap || strlen(cap) == 0 ||
+      !c3 || strlen(c3) != 3 ||
+      !reg || strlen(reg) == 0 ||
+      !doc["population"].is<long>() || doc["population"].as<long>() < 0) {
+    triggerError("Bad Data", "Country payload missing required fields");
     return false;
   }
 
@@ -435,16 +382,11 @@ bool fetchCountry(const char* countryName) {
   snprintf(currentCountry.cca3, sizeof(currentCountry.cca3), "%s", c3);
   snprintf(currentCountry.region, sizeof(currentCountry.region), "%s", reg);
   currentCountry.population = doc["population"].as<long>();
-  hasCurrentCountry = true;
 
   return true;
 }
 
 bool saveCountryToBackend(const Country& c) {
-  if (!hasCurrentCountry) {
-    return false;
-  }
-
   Serial.print("Connecting to backend: ");
   Serial.print(BACKEND_HOST);
   Serial.print(":");
@@ -458,7 +400,7 @@ bool saveCountryToBackend(const Country& c) {
     return false;
   }
 
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["apiName"] = "Mercantec Countries API";
   doc["choice"] = c.name;
   doc["cca3"] = c.cca3;
@@ -471,7 +413,7 @@ bool saveCountryToBackend(const Country& c) {
 
   client.print("POST ");
   client.print(BACKEND_PATH);
-  client.print(" HTTP/1.1\r\n");
+  client.print(" HTTP/1.0\r\n");
   client.print("Host: ");
   client.print(BACKEND_HOST);
   client.print("\r\n");
@@ -482,23 +424,7 @@ bool saveCountryToBackend(const Country& c) {
   client.print("Connection: close\r\n\r\n");
   client.print(body);
 
-  unsigned long waitStart = millis();
-  while (!client.available()) {
-    if (millis() - waitStart > HTTP_TIMEOUT_MS) {
-      client.stop();
-      triggerError("Save Timeout", "Backend response timeout");
-      return false;
-    }
-    delay(10);
-  }
-
-  String statusLine = client.readStringUntil('\n');
-  int statusCode = 0;
-  int firstSpace = statusLine.indexOf(' ');
-  if (firstSpace > 0) {
-    statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
-  }
-
+  int statusCode = readStatusCode(client);
   client.stop();
 
   Serial.print("Backend response status: ");
@@ -515,7 +441,6 @@ bool saveCountryToBackend(const Country& c) {
 }
 
 void resetToMenu() {
-  hasCurrentCountry = false;
   selectedRegion = REGION_NONE;
   currentState = STATE_CHOOSE_REGION;
   drawChooseRegionScreen();
@@ -537,19 +462,14 @@ void rollCountry() {
 }
 
 void handleChooseRegion() {
-  if (carrier.Buttons.onTouchDown(TOUCH1)) {
-    seedRandomOnce();
-    selectedRegion = REGION_EUROPE;
-    currentState = STATE_WAIT_SHAKE;
-    drawWaitShakeScreen(getRegionName(selectedRegion));
-  } else if (carrier.Buttons.onTouchDown(TOUCH2)) {
-    seedRandomOnce();
-    selectedRegion = REGION_ASIA;
-    currentState = STATE_WAIT_SHAKE;
-    drawWaitShakeScreen(getRegionName(selectedRegion));
-  } else if (carrier.Buttons.onTouchDown(TOUCH3)) {
-    seedRandomOnce();
-    selectedRegion = REGION_AFRICA;
+  RegionChoice choice = REGION_NONE;
+  if (carrier.Buttons.onTouchDown(TOUCH1)) choice = REGION_EUROPE;
+  else if (carrier.Buttons.onTouchDown(TOUCH2)) choice = REGION_ASIA;
+  else if (carrier.Buttons.onTouchDown(TOUCH3)) choice = REGION_AFRICA;
+
+  if (choice != REGION_NONE) {
+    randomSeed(micros());
+    selectedRegion = choice;
     currentState = STATE_WAIT_SHAKE;
     drawWaitShakeScreen(getRegionName(selectedRegion));
   }
@@ -573,49 +493,22 @@ void handleCountryShown() {
   }
 
   if (carrier.Buttons.onTouchDown(TOUCH0)) {
-    if (hasCurrentCountry) {
-      drawSavingScreen(currentCountry.name);
-
-      if (saveCountryToBackend(currentCountry)) {
-        currentState = STATE_SAVED;
-        savedStateEnterTime = millis();
-        drawSavedScreen(currentCountry.name);
-      } else {
-        currentState = STATE_COUNTRY_SHOWN;
-      }
-    }
-    return;
-  }
-
-  if (checkShake()) {
-    rollCountry();
-  }
-}
-
-void handleSaved() {
-  if (carrier.Buttons.onTouchDown(TOUCH4)) {
-    resetToMenu();
-    return;
-  }
-
-  if (checkShake()) {
-    rollCountry();
-    return;
-  }
-
-  if (millis() - savedStateEnterTime > SAVED_SCREEN_DURATION_MS) {
-    if (hasCurrentCountry) {
-      currentState = STATE_COUNTRY_SHOWN;
+    drawSavingScreen(currentCountry.name);
+    if (saveCountryToBackend(currentCountry)) {
+      drawSavedScreen(currentCountry.name);
+      delay(SAVED_SCREEN_DURATION_MS);
       drawCountryScreen(currentCountry);
-    } else {
-      resetToMenu();
     }
+    return;
+  }
+
+  if (checkShake()) {
+    rollCountry();
   }
 }
 
 void handleError() {
-  if (carrier.Buttons.onTouchDown(TOUCH4) || carrier.Buttons.onTouchDown(TOUCH1) ||
-      carrier.Buttons.onTouchDown(TOUCH2) || carrier.Buttons.onTouchDown(TOUCH3)) {
+  if (carrier.Buttons.onTouchDown(TOUCH4)) {
     resetToMenu();
   }
 }
@@ -655,9 +548,6 @@ void loop() {
       break;
     case STATE_COUNTRY_SHOWN:
       handleCountryShown();
-      break;
-    case STATE_SAVED:
-      handleSaved();
       break;
     case STATE_ERROR:
       handleError();

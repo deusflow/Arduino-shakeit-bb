@@ -9,13 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 )
 
 //go:embed web/*
 var webFS embed.FS
+
+var allowedRegions = []string{"Europe", "Asia", "Africa"}
 
 type CountryInput struct {
 	ApiName    string `json:"apiName"`
@@ -46,7 +47,7 @@ func newServer(cfg Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	return mux
 }
 
-func validateCountryInput(input CountryInput, allowedRegions []string) error {
+func validateCountryInput(input CountryInput) error {
 	if strings.TrimSpace(input.ApiName) == "" {
 		return fmt.Errorf("field apiName is required and cannot be empty")
 	}
@@ -106,7 +107,7 @@ func handleCreateCountry(cfg Config, db *sql.DB, logger *slog.Logger) http.Handl
 		input.Capital = repairBrokenUTF8(input.Capital)
 		input.Region = repairBrokenUTF8(input.Region)
 
-		if err := validateCountryInput(input, cfg.AllowedRegions); err != nil {
+		if err := validateCountryInput(input); err != nil {
 			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -129,19 +130,7 @@ func handleCreateCountry(cfg Config, db *sql.DB, logger *slog.Logger) http.Handl
 
 func handleListCountries(db *sql.DB, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		filter := CountryFilter{
-			Region: strings.TrimSpace(q.Get("region")),
-			Name:   strings.TrimSpace(q.Get("name")),
-		}
-
-		if limitStr := strings.TrimSpace(q.Get("limit")); limitStr != "" {
-			if limitVal, err := strconv.Atoi(limitStr); err == nil && limitVal > 0 {
-				filter.Limit = limitVal
-			}
-		}
-
-		list, err := listCountries(db, filter)
+		list, err := listCountries(db)
 		if err != nil {
 			logger.Error("failed to list countries", "error", err)
 			writeJSONError(w, http.StatusInternalServerError, "failed to query countries")

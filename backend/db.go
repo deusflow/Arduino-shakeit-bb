@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -17,12 +16,6 @@ type SavedCountry struct {
 	Region     string `json:"region"`
 	Population int64  `json:"population"`
 	SavedAt    string `json:"savedAt"`
-}
-
-type CountryFilter struct {
-	Region string
-	Name   string
-	Limit  int
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -42,8 +35,6 @@ func openDB(path string) (*sql.DB, error) {
 		population INTEGER NOT NULL,
 		saved_at TEXT NOT NULL
 	);
-	CREATE INDEX IF NOT EXISTS idx_countries_saved_at ON countries(saved_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_countries_region ON countries(region);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
@@ -80,35 +71,10 @@ func insertCountry(db *sql.DB, c CountryInput, savedAt string) (SavedCountry, er
 	}, nil
 }
 
-func listCountries(db *sql.DB, f CountryFilter) ([]SavedCountry, error) {
-	var whereClauses []string
-	var args []any
+func listCountries(db *sql.DB) ([]SavedCountry, error) {
+	query := "SELECT id, api_name, choice, cca3, capital, region, population, saved_at FROM countries ORDER BY id DESC"
 
-	if f.Region != "" {
-		whereClauses = append(whereClauses, "LOWER(region) = LOWER(?)")
-		args = append(args, f.Region)
-	}
-
-	if f.Name != "" {
-		escaped := strings.ReplaceAll(f.Name, "\\", "\\\\")
-		escaped = strings.ReplaceAll(escaped, "%", "\\%")
-		escaped = strings.ReplaceAll(escaped, "_", "\\_")
-		whereClauses = append(whereClauses, "LOWER(choice) LIKE LOWER(?) ESCAPE '\\'")
-		args = append(args, "%"+escaped+"%")
-	}
-
-	query := "SELECT id, api_name, choice, cca3, capital, region, population, saved_at FROM countries"
-	if len(whereClauses) > 0 {
-		query += " WHERE " + strings.Join(whereClauses, " AND ")
-	}
-	query += " ORDER BY id DESC"
-
-	if f.Limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, f.Limit)
-	}
-
-	rows, err := db.Query(query, args...)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("query countries: %w", err)
 	}

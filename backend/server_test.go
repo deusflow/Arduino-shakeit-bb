@@ -18,10 +18,9 @@ func setupTestServer(t *testing.T) (http.Handler, Config) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	cfg := Config{
-		ListenAddr:     "127.0.0.1:0",
-		DbPath:         dbPath,
-		AllowedRegions: []string{"Europe", "Asia", "Africa"},
-		MaxBodyBytes:   64 * 1024,
+		ListenAddr:   "127.0.0.1:0",
+		DbPath:       dbPath,
+		MaxBodyBytes: 64 * 1024,
 	}
 
 	db, err := openDB(cfg.DbPath)
@@ -198,7 +197,7 @@ func TestPostCountry_ValidationErrors400(t *testing.T) {
 	}
 }
 
-func TestGetCountries_OrderingAndFilters(t *testing.T) {
+func TestGetCountries_Ordering(t *testing.T) {
 	handler, _ := setupTestServer(t)
 
 	countries := []map[string]any{
@@ -218,63 +217,22 @@ func TestGetCountries_OrderingAndFilters(t *testing.T) {
 	}
 
 	// test newest first: first result should be Kenya, then Japan, then Sweden
-	t.Run("newest first ordering", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/countries", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
+	req := httptest.NewRequest("GET", "/api/countries", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d", w.Code)
-		}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
 
-		var list []SavedCountry
-		_ = json.Unmarshal(w.Body.Bytes(), &list)
-		if len(list) != 3 {
-			t.Fatalf("expected 3 items, got %d", len(list))
-		}
-		if list[0].Choice != "Kenya" || list[1].Choice != "Japan" || list[2].Choice != "Sweden" {
-			t.Errorf("incorrect order: %v, %v, %v", list[0].Choice, list[1].Choice, list[2].Choice)
-		}
-	})
-
-	// test region filter
-	t.Run("filter by region", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/countries?region=Asia", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-
-		var list []SavedCountry
-		_ = json.Unmarshal(w.Body.Bytes(), &list)
-		if len(list) != 1 || list[0].Choice != "Japan" {
-			t.Errorf("expected only Japan, got %v", list)
-		}
-	})
-
-	// test name filter
-	t.Run("filter by name substring", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/countries?name=ede", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-
-		var list []SavedCountry
-		_ = json.Unmarshal(w.Body.Bytes(), &list)
-		if len(list) != 1 || list[0].Choice != "Sweden" {
-			t.Errorf("expected only Sweden for 'ede', got %v", list)
-		}
-	})
-
-	// test literal % search is not treated as SQL wildcard
-	t.Run("filter by name with wildcard special character", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/countries?name=%25", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-
-		var list []SavedCountry
-		_ = json.Unmarshal(w.Body.Bytes(), &list)
-		if len(list) != 0 {
-			t.Errorf("expected 0 matches for '%%', got %d", len(list))
-		}
-	})
+	var list []SavedCountry
+	_ = json.Unmarshal(w.Body.Bytes(), &list)
+	if len(list) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(list))
+	}
+	if list[0].Choice != "Kenya" || list[1].Choice != "Japan" || list[2].Choice != "Sweden" {
+		t.Errorf("incorrect order: %v, %v, %v", list[0].Choice, list[1].Choice, list[2].Choice)
+	}
 }
 
 func TestStaticFiles(t *testing.T) {

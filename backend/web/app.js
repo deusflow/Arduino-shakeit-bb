@@ -50,7 +50,6 @@
                 selectedCountry = null;
             }
 
-            renderRegions();
             renderHero();
             renderList();
         } catch (err) {
@@ -62,33 +61,6 @@
             refreshBtn.textContent = 'Refresh';
             refreshBtn.disabled = false;
         }
-    }
-
-    function renderRegions() {
-        const distinct = ['All', ...new Set(countries.map(c => c.region).filter(Boolean))];
-
-        const currentButtons = Array.from(regionChips.querySelectorAll('.region-btn')).map(b => b.dataset.region);
-        const isSame = distinct.length === currentButtons.length && distinct.every((r, i) => r === currentButtons[i]);
-        if (isSame) {
-            regionChips.querySelectorAll('.region-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.region === selectedRegion);
-            });
-            return;
-        }
-
-        regionChips.innerHTML = '';
-        distinct.forEach(region => {
-            const btn = document.createElement('button');
-            btn.className = `region-btn ${region === selectedRegion ? 'active' : ''}`;
-            btn.dataset.region = region;
-            btn.textContent = region;
-            btn.addEventListener('click', () => {
-                selectedRegion = region;
-                renderRegions();
-                renderList();
-            });
-            regionChips.appendChild(btn);
-        });
     }
 
     function renderHero() {
@@ -175,6 +147,14 @@
     searchInput.addEventListener('input', (e) => {
         searchQuery = e.target.value;
         renderList();
+    });
+
+    regionChips.querySelectorAll('.region-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedRegion = btn.dataset.region;
+            regionChips.querySelectorAll('.region-btn').forEach(b => b.classList.toggle('active', b === btn));
+            renderList();
+        });
     });
 
     refreshBtn.addEventListener('click', () => {
